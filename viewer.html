@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flipbook</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="viewer">
+  <div class="toolbar">
+    <a href="index.html">← All editions</a>
+    <span class="title" id="title"></span>
+    <button id="prev" disabled aria-label="Previous page">‹ Prev</button>
+    <span class="page-indicator" id="indicator">–</span>
+    <button id="next" disabled aria-label="Next page">Next ›</button>
+    <button id="fullscreen" aria-label="Full screen">⛶</button>
+    <a id="download" href="#" download>Download PDF</a>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="loading" id="loading">
+      <div id="loading-text">Loading…</div>
+      <div class="progress"><div id="bar"></div></div>
+    </div>
+    <div id="bookwrap" hidden><div id="book"></div></div>
+  </div>
+
+  <script src="lib/pdf.min.js"></script>
+  <script src="lib/page-flip.browser.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js';
+
+    const $ = id => document.getElementById(id);
+    const params = new URLSearchParams(location.search);
+    const edId = params.get('ed');
+
+    function showError(msg) {
+      $('loading').innerHTML = '<div class="error">' + msg + '</div>';
+    }
+
+    async function main() {
+      const data = await fetch('editions.json', { cache: 'no-cache' }).then(r => r.json());
+      const ed = data.editions.find(e => e.id === edId) || data.editions[0];
+      if (!ed) return showError('No editions listed in editions.json.');
+
+      document.title = ed.title + (data.siteTitle ? ' · ' + data.siteTitle : '');
+      $('title').textContent = ed.title;
+      $('download').href = ed.file;
+
+      const pdf = await pdfjsLib.getDocument(ed.file).promise;
+      const total = pdf.numPages;
+
+      // Render quality: sharp on retina screens without blowing up memory
+      const first = await pdf.getPage(1);
+      const base = first.getViewport({ scale: 1 });
+      const targetWidth = Math.min(1400, Math.round(900 * Math.min(window.devicePixelRatio || 1, 2)));
+      const scale = targetWidth / base.width;
+
+      const images = [];
+      for (let i = 1; i <= total; i++) {
+        $('loading-text').textContent = `Preparing page ${i} of ${total}…`;
+        const page = i === 1 ? first : await pdf.getPage(i);
+        const vp = page.getViewport({ scale });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(vp.width);
+        canvas.height = Math.floor(vp.height);
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+        images.push(canvas.toDataURL('image/jpeg', 0.88));
+        page.cleanup();
+        $('bar').style.width = (i / total * 100) + '%';
+      }
+
+      $('loading').remove();
+      const bookEl = $('book');
+      const wrap = $('bookwrap');
+      wrap.hidden = false;
+
+      const pageFlip = new St.PageFlip(bookEl, {
+        width: Math.round(base.width),
+        height: Math.round(base.height),
+        size: 'stretch',
+        minWidth: 200,
+        maxWidth: 1200,
+        minHeight: 280,
+        maxHeight: 1700,
+        showCover: true,
+        usePortrait: true,
+        mobileScrollSupport: false,
+        maxShadowOpacity: 0.4,
+        autoSize: true
+      });
+
+      // Keep the book inside the visible area
+      function fitBook() {
+        const stage = $('stage');
+        const availH = stage.clientHeight - 32;
+        const availW = stage.clientWidth - 32;
+        const ratio = base.width / base.height;
+        const spread = availW > 700 ? 2 : 1;
+        const w = Math.min(availW, availH * ratio * spread);
+        wrap.style.width = w + 'px';
+        wrap.style.height = (w / spread / ratio) + 'px';
+      }
+      fitBook();
+      window.addEventListener('resize', fitBook);
+
+      images.forEach((src, i) => {
+        const pg = document.createElement('div');
+        pg.className = 'page';
+        if (i === 0 || i === images.length - 1) pg.dataset.density = 'hard';
+        const img = document.createElement('img');
+        img.src = src;
+        img.alt = 'Page ' + (i + 1);
+        pg.appendChild(img);
+        bookEl.appendChild(pg);
+      });
+      pageFlip.loadFromHTML(bookEl.querySelectorAll('.page'));
+
+      function update() {
+        const idx = pageFlip.getCurrentPageIndex();
+        const orient = pageFlip.getOrientation();
+        let label, rightmost = idx;
+        if (orient === 'landscape' && idx > 0 && idx < total - 1) {
+          const left = idx % 2 === 1 ? idx : idx - 1;
+          rightmost = Math.min(left + 1, total - 1);
+          label = `${left + 1}–${rightmost + 1} / ${total}`;
+        } else {
+          label = `${idx + 1} / ${total}`;
+        }
+        $('indicator').textContent = label;
+        $('prev').disabled = idx === 0;
+        $('next').disabled = rightmost >= total - 1;
+        history.replaceState(null, '', '#p=' + (idx + 1));
+      }
+
+      pageFlip.on('flip', update);
+      pageFlip.on('changeOrientation', update);
+
+      $('prev').onclick = () => pageFlip.flipPrev();
+      $('next').onclick = () => pageFlip.flipNext();
+      document.addEventListener('keydown', e => {
+        if (e.key === 'ArrowLeft') pageFlip.flipPrev();
+        if (e.key === 'ArrowRight') pageFlip.flipNext();
+      });
+      $('fullscreen').onclick = () => {
+        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+        else document.exitFullscreen?.();
+      };
+
+      // Deep link: viewer.html?ed=edition-2#p=5
+      const m = location.hash.match(/p=(\d+)/);
+      if (m) {
+        const target = Math.min(Math.max(parseInt(m[1], 10) - 1, 0), total - 1);
+        pageFlip.turnToPage(target);
+      }
+      update();
+    }
+
+    main().catch(e => {
+      console.error(e);
+      showError('Could not open this flipbook. Check that the PDF path in editions.json is correct and the file has been uploaded.');
+    });
+  </script>
+</body>
+</html>

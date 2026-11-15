@@ -1,0 +1,13 @@
+{
+  "siteTitle": "The ALog",
+  "siteTagline": "The magazine of The Actuarial Sphere",
+  "editions": [
+    {
+      "id": "sample",
+      "title": "Sample Edition",
+      "subtitle": "Replace me with your first real edition",
+      "date": "2026",
+      "file": "editions/sample.pdf"
+    }
+  ]
+}
