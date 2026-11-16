@@ -1,7 +1,14 @@
 {
-  "siteTitle": "The ALog",
+  "siteTitle": "The Actuarial Log (The ALog)",
   "siteTagline": "The magazine of The Actuarial Sphere (TAS)",
   "editions": [
+    {
+      "id": "July2026",
+      "title": "Edition 2: July 2026",
+      "subtitle": "Second Edition",
+      "date": "July Edition",
+      "file": "Edition2-July2026.pdf"
+    },
     {
       "id": "March2026",
       "title": "Edition 1: March 2026",
