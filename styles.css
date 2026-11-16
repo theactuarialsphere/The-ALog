@@ -128,3 +128,12 @@ body.viewer {
 .progress div { height: 100%; width: 0; background: #fff; transition: width .15s; }
 
 .error { color: #ffb4b4; max-width: 480px; text-align: center; line-height: 1.5; }
+
+body:not(.viewer) {
+  background-image:
+    linear-gradient(rgba(244, 241, 236, 0.85), rgba(244, 241, 236, 0.85)),
+    url("TASLogo.png");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
